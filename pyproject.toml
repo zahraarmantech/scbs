@@ -1,0 +1,58 @@
+[build-system]
+requires      = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "scbs"
+version         = "1.0.0"
+description     = "Semantic Chunk Buffer System — zero-dependency semantic encoding for fast classification and search"
+readme          = "README.md"
+license         = { file = "LICENSE" }
+requires-python = ">=3.9"
+authors         = [
+    { name = "Zahra" }
+]
+keywords        = [
+    "semantic-search",
+    "nlp",
+    "text-classification",
+    "embeddings-alternative",
+    "vector-search",
+    "deterministic"
+]
+classifiers     = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.urls]
+Homepage    = "https://github.com/zahraarmantech/scbs"
+Repository  = "https://github.com/zahraarmantech/scbs"
+Issues      = "https://github.com/zahraarmantech/scbs/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths        = ["tests"]
+python_files     = ["test_*.py"]
+python_classes   = ["Test*"]
+python_functions = ["test_*"]
