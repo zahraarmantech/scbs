@@ -97,41 +97,69 @@ PENALTY = 200
 def weighted_matrix_distance(A: list, B: list,
                               weight_a: float = 1.0,
                               weight_b: float = 1.0,
-                              penalty: int = PENALTY) -> float:
+                              penalty: int = PENALTY,
+                              min_shared: int = 1,
+                              mismatch_weight: float = 30.0,
+                              slot_weights: dict = None) -> float:
     """
-    Matrix distance scaled by TF-IDF content weight.
+    Matrix distance with shared-signal and missing-signal kept separate.
     A and B are lists of (slot, value) tuples from make_row.
+
+    Approach 3 — Domain-voted slot weighting.
+
+    Builds on Approach 2 (union of signals) and adds:
+      * Per-slot importance weights derived from the voted domain.
+      * Different domains weight slots differently — Finance values
+        TECH+DOMAIN, HR values WHO+TIME, etc.
+      * When both records vote the same domain, that domain's
+        weight profile is applied. When they vote differently
+        (or no clear domain), neutral weights are used.
+
+    The weights are passed in as `slot_weights` — computed once
+    per query × record pair using domain_voting.weights_for_pair().
+
+    Args:
+        slot_weights:    optional dict {slot: weight}. None = neutral.
+        Other args:      see Approach 2.
     """
-    # Convert to slot→value dicts for alignment
     dict_a = {slot: val for slot, val in A}
     dict_b = {slot: val for slot, val in B}
-    all_slots = set(dict_a) | set(dict_b)
 
-    total = 0
-    filled = 0
-    for slot in all_slots:
-        va = dict_a.get(slot, 0)
-        vb = dict_b.get(slot, 0)
-        if va == 0 and vb == 0:
-            continue
-        if va == 0 or vb == 0:
-            total  += penalty
-            filled += 1
-        else:
-            total  += abs(va - vb)
-            filled += 1
+    a_slots = set(dict_a)
+    b_slots = set(dict_b)
 
-    if filled == 0:
-        return 0.0
+    shared  = a_slots & b_slots
+    missing = a_slots ^ b_slots
 
-    raw = total / filled
+    if len(shared) < min_shared:
+        return 9999.0
 
-    # Scale by harmonic mean of content weights
+    # ── Signal 1: shared content distance, weighted ────────────
+    if slot_weights is None:
+        slot_weights = {}
+
+    weighted_sum  = 0.0
+    weight_total  = 0.0
+    for s in shared:
+        w = slot_weights.get(s, 1.0)
+        weighted_sum += abs(dict_a[s] - dict_b[s]) * w
+        weight_total += w
+
+    shared_distance = weighted_sum / weight_total if weight_total else 0
+
+    # ── Signal 2: structural mismatch ratio ───────────────────
+    total_slots    = len(a_slots | b_slots)
+    mismatch_ratio = len(missing) / total_slots if total_slots else 0
+
+    # ── TF-IDF scale on the shared signal only ────────────────
     wa = max(0.5, min(weight_a, 5.0))
     wb = max(0.5, min(weight_b, 5.0))
-    combined = 2 * wa * wb / (wa + wb)
+    combined_weight = 2 * wa * wb / (wa + wb)
+    shared_scaled   = shared_distance / combined_weight
 
-    return round(raw / combined, 4)
+    # ── Union at the end ──────────────────────────────────────
+    final = shared_scaled + (mismatch_ratio * mismatch_weight)
+    return round(final, 4)
 
 
 # ==============================================================
@@ -194,19 +222,23 @@ class TFIDFClusterStore:
     # ── Add ────────────────────────────────────────────────────
 
     def add(self, row: list, text: str):
+        from .domain_voting import compute_domain_hint
+
         rid = self._next_id
         self._next_id += 1
-        cid = tag_sentence(text, self._word_clusters)
-        sig = make_signature(row)
-        w   = sentence_weight(text, self._idf)
+        cid    = tag_sentence(text, self._word_clusters)
+        sig    = make_signature(row)
+        w      = sentence_weight(text, self._idf)
+        domain = compute_domain_hint(text)        # Approach 3
 
         self._all_records[rid] = {
             "id": rid, "text": text,
-            "row": row, "cluster": cid, "weight": w
+            "row": row, "cluster": cid,
+            "weight": w, "domain": domain,
         }
         self._weights[rid] = w
         bucket_idx = len(self._buckets[cid])
-        self._buckets[cid].append((row, rid, text, w))
+        self._buckets[cid].append((row, rid, text, w, domain))
         self._sigs[cid].append(sig)
         self._zones[cid].add(bucket_idx, row)
 
@@ -245,7 +277,7 @@ class TFIDFClusterStore:
         for cid in search_clusters:
             for item, sig in zip(self._buckets[cid],
                                   self._sigs[cid]):
-                _, rid, _, _ = item
+                _, rid, _, _, _ = item
                 if rid not in excluded:
                     domain_pool.append(item)
                     domain_sigs.append(sig)
@@ -265,7 +297,7 @@ class TFIDFClusterStore:
             local_zone = zi.candidates(query_row, zone_radius)
             for local_idx in local_zone:
                 if local_idx < len(bucket):
-                    _, rid, _, _ = bucket[local_idx]
+                    _, rid, _, _, _ = bucket[local_idx]
                     zone_rids.add(rid)
 
         candidates = (
@@ -274,15 +306,24 @@ class TFIDFClusterStore:
         ) or sig_pass
         stats["zone_candidates"] = len(candidates)
 
-        # Layer 3: TF-IDF weighted distance + puzzle exclusion
+        # Layer 3: TF-IDF weighted distance + domain-aware weights
+        from .domain_voting import (
+            compute_domain_hint, weights_for_pair,
+        )
+        q_domain = compute_domain_hint(query_text)
+
         scored = []
-        for row, rid, text, rec_weight in candidates:
+        for row, rid, text, rec_weight, rec_domain in candidates:
             if rid in excluded:
                 continue
+
+            slot_weights = weights_for_pair(q_domain, rec_domain)
+
             d = weighted_matrix_distance(
                 query_row, row,
                 weight_a=q_weight,
-                weight_b=rec_weight
+                weight_b=rec_weight,
+                slot_weights=slot_weights,
             )
             stats["distance_checks"] += 1
             if d <= threshold:
@@ -291,6 +332,7 @@ class TFIDFClusterStore:
                     "distance": round(d, 2),
                     "weight": round(rec_weight, 3),
                     "cluster": self._all_records[rid]["cluster"],
+                    "domain":  rec_domain,
                 })
 
         scored.sort(key=lambda r: r["distance"])
@@ -303,13 +345,21 @@ class TFIDFClusterStore:
     def linear_search(self, query_row: list,
                       query_text: str,
                       threshold: float = 100.0) -> list:
+        from .domain_voting import (
+            compute_domain_hint, weights_for_pair,
+        )
         q_weight = sentence_weight(query_text, self._idf)
+        q_domain = compute_domain_hint(query_text)
         results  = []
         for rid, rec in self._all_records.items():
+            slot_weights = weights_for_pair(
+                q_domain, rec.get("domain", "general"),
+            )
             d = weighted_matrix_distance(
                 query_row, rec["row"],
                 weight_a=q_weight,
-                weight_b=rec["weight"]
+                weight_b=rec["weight"],
+                slot_weights=slot_weights,
             )
             if d <= threshold:
                 results.append({

@@ -89,48 +89,49 @@ def shared_slots(sig_a: int, sig_b: int) -> int:
 # ==============================================================
 
 def matrix_distance(A: list, B: list,
-                    penalty: int = PENALTY) -> float:
+                    penalty: int = PENALTY,
+                    min_shared: int = 2) -> float:
     """
     Distance between two variable-width matrix rows.
     A, B are sorted lists of (slot, value) pairs.
 
-    Merge-style comparison — O(k) where k = total filled slots.
-    No dict. No hash. No sort at query time (pre-sorted at write).
+    Approach 1 — Minimum shared slots filter.
+
+    Returns INFINITY if fewer than min_shared slots are present
+    in both. Otherwise returns average distance over shared slots.
+    Missing slots no longer dilute the score.
+
+    Args:
+        A, B:        sorted (slot, value) lists
+        penalty:     unused in this approach (kept for compatibility)
+        min_shared:  minimum number of slots that must be present
+                     in BOTH records to qualify as a match candidate
+
+    Returns:
+        float — average distance over shared slots,
+                or 9999 if insufficient overlap
     """
     i = j = 0
-    total  = 0
-    filled = 0
+    shared_distance = 0
+    shared_count    = 0
 
     while i < len(A) and j < len(B):
         sa, va = A[i]
         sb, vb = B[j]
 
-        if sa == sb:           # same slot — compare values
-            total  += abs(va - vb)
-            filled += 1
+        if sa == sb:
+            shared_distance += abs(va - vb)
+            shared_count    += 1
             i += 1; j += 1
-        elif sa < sb:          # slot only in A — penalty
-            total  += penalty
-            filled += 1
-            i += 1
-        else:                  # slot only in B — penalty
-            total  += penalty
-            filled += 1
-            j += 1
+        elif sa < sb:
+            i += 1   # slot only in A — ignore, do not penalise
+        else:
+            j += 1   # slot only in B — ignore, do not penalise
 
-    # Remaining slots in A
-    while i < len(A):
-        total  += penalty
-        filled += 1
-        i += 1
+    if shared_count < min_shared:
+        return 9999.0   # insufficient overlap — reject
 
-    # Remaining slots in B
-    while j < len(B):
-        total  += penalty
-        filled += 1
-        j += 1
-
-    return total / filled if filled else 0.0
+    return shared_distance / shared_count
 
 
 # ==============================================================
