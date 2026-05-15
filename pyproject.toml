@@ -44,9 +44,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage    = "https://github.com/zahraarmantech/scbs"
-Repository  = "https://github.com/zahraarmantech/scbs"
-Issues      = "https://github.com/zahraarmantech/scbs/issues"
+Homepage    = "https://github.com/YOUR_USERNAME/scbs"
+Repository  = "https://github.com/YOUR_USERNAME/scbs"
+Issues      = "https://github.com/YOUR_USERNAME/scbs/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
