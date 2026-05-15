@@ -1,0 +1,38 @@
+{
+  "lag": {
+    "id": 3075,
+    "cluster": "Farewells",
+    "method": "edit_distance",
+    "word": "lag"
+  },
+  "succeeded": {
+    "id": 4405,
+    "cluster": "Actions: Management",
+    "method": "suffix",
+    "word": "succeeded"
+  },
+  "xyzabc": {
+    "id": 5161,
+    "cluster": "Miscellaneous",
+    "method": "fallback",
+    "word": "xyzabc"
+  },
+  "qwerty": {
+    "id": 3629,
+    "cluster": "Data: Database Ops",
+    "method": "edit_distance",
+    "word": "qwerty"
+  },
+  "unknownword": {
+    "id": 3276,
+    "cluster": "Negative Emotions",
+    "method": "prefix",
+    "word": "unknownword"
+  },
+  "authentication": {
+    "id": 4406,
+    "cluster": "Actions: Management",
+    "method": "suffix",
+    "word": "authentication"
+  }
+}
